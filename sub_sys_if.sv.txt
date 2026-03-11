@@ -1,0 +1,30 @@
+interface sub_sys_if #(parameter int DIN_WIDTH = 8,
+                       parameter int N         = 4,
+                       parameter int BUS_WIDTH = 2*DIN_WIDTH*N)
+(
+  input logic sys_clk,
+  input logic sr_clk,
+  input logic rst_n
+);
+  logic [7:0]            M_minus_one;
+  logic [BUS_WIDTH-1:0]  din;
+  logic                  wr_fifo;
+  logic                  rd_fifo;
+  logic                  in_fifo_full;
+  logic [BUS_WIDTH-1:0]  dout;
+  logic                  out_fifo_empty;
+
+  modport dut (
+    input  rst_n, sys_clk, sr_clk, M_minus_one, din, wr_fifo, rd_fifo,
+    output in_fifo_full, dout, out_fifo_empty
+  );
+
+  modport drv (
+    input  sys_clk, sr_clk, rst_n, in_fifo_full, out_fifo_empty, dout,
+    output M_minus_one, din, wr_fifo, rd_fifo
+  );
+
+  modport mon (
+    input sys_clk, sr_clk, rst_n, dout, out_fifo_empty
+  );
+endinterface

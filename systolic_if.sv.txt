@@ -1,0 +1,27 @@
+interface systolic_if #(parameter int DIN_WIDTH = 8,
+                        parameter int N         = 4)
+(
+  input logic clk,
+  input logic rst_n
+);
+  logic [2*DIN_WIDTH-1:0] c_din [0:N-1];
+  logic [DIN_WIDTH-1:0]   a_din [0:N-1];
+  logic [DIN_WIDTH-1:0]   b_din [0:N-1];
+  logic                   in_valid;
+  logic [2*DIN_WIDTH-1:0] c_dout[0:N-1];
+  logic                   out_valid;
+
+  modport dut (
+    input  clk, rst_n, c_din, a_din, b_din, in_valid,
+    output c_dout, out_valid
+  );
+
+  modport drv (
+    input  clk, rst_n,
+    output c_din, a_din, b_din, in_valid
+  );
+
+  modport mon (
+    input clk, rst_n, c_dout, out_valid
+  );
+endinterface

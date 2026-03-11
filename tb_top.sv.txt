@@ -1,0 +1,130 @@
+`timescale 1ns/1ps
+import uvm_pkg::*;
+`include "uvm_macros.svh"
+
+`include "common_types.sv"
+`include "systolic_if.sv"
+`include "sub_sys_if.sv"
+
+`include "mat_tr.sv"
+`include "mat_seq.sv"
+`include "systolic_driver.sv"
+`include "systolic_monitor.sv"
+`include "sub_sys_driver.sv"
+`include "sub_sys_monitor.sv"
+`include "systolic_scoreboard.sv"
+`include "systolic_agent.sv"
+//`include "sub_sys_agent.sv"
+`include "systolic_env.sv"
+`include "systolic_test.sv"
+
+module tb_top;
+
+  localparam int BUS_WIDTH = 2*DIN_WIDTH_P*N_P;
+
+  logic clk, sys_clk, sr_clk, rst_n;
+
+  initial begin
+    clk     = 0;
+    sys_clk = 0;
+    sr_clk  = 0;
+    forever #5 clk = ~clk;
+  end
+
+  initial forever #7 sys_clk = ~sys_clk;
+  initial forever #3 sr_clk  = ~sr_clk;
+
+  initial begin
+    rst_n = 0;
+    #50 rst_n = 1;
+  end
+
+  // Interfaces
+  systolic_if #(DIN_WIDTH_P, N_P) sif(.clk(clk), .rst_n(rst_n));
+  sub_sys_if  #(DIN_WIDTH_P, N_P, BUS_WIDTH) ssif(.sys_clk(sys_clk),
+                                                  .sr_clk(sr_clk),
+                                                  .rst_n(rst_n));
+
+  // DUTs
+  systolic_array #(
+    .DIN_WIDTH(DIN_WIDTH_P),
+    .N        (N_P)
+  ) u_systolic (
+    .rst_n    (rst_n),
+    .clk      (clk),
+    .c_din    (sif.c_din),
+    .a_din    (sif.a_din),
+    .b_din    (sif.b_din),
+    .in_valid (sif.in_valid),
+    .c_dout   (sif.c_dout),
+    .out_valid(sif.out_valid)
+  );
+
+systolic_sva #(
+  .DIN_WIDTH(DIN_WIDTH),
+  .N        (N)
+) u_systolic_sva (
+  .clk      (clk),
+  .rst_n    (rst_n),
+  .in_valid (sif.in_valid),
+  .a_din    (sif.a_din),
+  .b_din    (sif.b_din),
+  .c_dout   (sif.c_dout),
+  .out_valid(sif.out_valid)
+);
+
+  sub_sys #(
+    .DIN_WIDTH(DIN_WIDTH_P),
+    .N        (N_P),
+    .BUS_WIDTH(BUS_WIDTH)
+  ) u_subsys (
+    .rst_n        (rst_n),
+    .sys_clk      (sys_clk),
+    .sr_clk       (sr_clk),
+    .M_minus_one  (ssif.M_minus_one),
+    .din          (ssif.din),
+    .wr_fifo      (ssif.wr_fifo),
+    .rd_fifo      (ssif.rd_fifo),
+    .in_fifo_full (ssif.in_fifo_full),
+    .dout         (ssif.dout),
+    .out_fifo_empty(ssif.out_fifo_empty)
+  );
+
+sub_sys_sva #(
+  .DIN_WIDTH(DIN_WIDTH),
+  .N        (N),
+  .BUS_WIDTH(BUS_WIDTH)
+) u_sub_sys_sva (
+  .sys_clk      (sys_clk),
+  .sr_clk       (sr_clk),
+  .rst_n        (rst_n),
+  .M_minus_one  (ssif.M_minus_one),
+  .din          (ssif.din),
+  .wr_fifo      (ssif.wr_fifo),
+  .rd_fifo      (ssif.rd_fifo),
+  .in_fifo_full (ssif.in_fifo_full),
+  .dout         (ssif.dout),
+  .out_fifo_empty(ssif.out_fifo_empty)
+);
+
+
+  // UVM config
+  initial begin
+    uvm_config_db#(virtual systolic_if#(DIN_WIDTH_P,N_P).drv)::set(
+      null, "uvm_test_top.env.sa.drv", "vif", sif
+    );
+    uvm_config_db#(virtual systolic_if#(DIN_WIDTH_P,N_P).mon)::set(
+      null, "uvm_test_top.env.sa.mon", "vif", sif
+    );
+
+    uvm_config_db#(virtual sub_sys_if#(DIN_WIDTH_P,N_P,BUS_WIDTH).drv)::set(
+      null, "uvm_test_top.env.ssa.drv", "vif", ssif
+    );
+    uvm_config_db#(virtual sub_sys_if#(DIN_WIDTH_P,N_P,BUS_WIDTH).mon)::set(
+      null, "uvm_test_top.env.ssa.mon", "vif", ssif
+    );
+
+    run_test("systolic_test");
+  end
+
+endmodule

@@ -1,0 +1,67 @@
+`include "uvm_macros.svh"
+import uvm_pkg::*;
+`include "common_types.sv"
+`include "mat_tr.sv"
+
+class sub_sys_driver extends uvm_driver #(mat_tr);
+    `uvm_component_utils(sub_sys_driver)
+
+    sub_sys_vif_t drv_vif;
+
+    function new(string name, uvm_component parent);
+      super.new(name, parent);
+    endfunction
+
+    virtual function void build_phase(uvm_phase phase);
+      super.build_phase(phase);
+      if (!uvm_config_db#(sub_sys_vif_t)::get(this, "", "vif", drv_vif))
+        `uvm_fatal("NOVIF", "sub_sys_driver: no vif")
+    endfunction
+
+    virtual task run_phase(uvm_phase phase);
+      mat_tr tr;
+      drv_vif.wr_fifo     <= 0;
+      drv_vif.rd_fifo     <= 0;
+      drv_vif.M_minus_one <= 0;
+      drv_vif.din         <= '0;
+
+      forever begin
+        seq_item_port.get_next_item(tr);
+        `uvm_info(get_type_name(),
+                  $sformatf("Driving sub_sys tr id=%0d N=%0d M=%0d", tr.id, tr.N, tr.M),
+                  UVM_MEDIUM)
+
+        // Program M_minus_one
+        @(posedge drv_vif.sys_clk);
+        drv_vif.M_minus_one <= tr.M - 1;
+
+        // Push M samples into input FIFO
+        for (int k = 0; k < tr.M; k++) begin
+          logic [BUS_WIDTH_P-1:0] packed_data;
+          packed_data = '0;
+          for (int i = 0; i < tr.N; i++) begin
+            packed_data[i*DIN_WIDTH_P +: DIN_WIDTH_P]       = tr.A[i][k];
+            packed_data[(N_P+i)*DIN_WIDTH_P +: DIN_WIDTH_P] = tr.B[k][i];
+          end
+          @(posedge drv_vif.sys_clk);
+          drv_vif.din     <= packed_data;
+          drv_vif.wr_fifo <= 1;
+        end
+        @(posedge drv_vif.sys_clk);
+        drv_vif.wr_fifo <= 0;
+
+        // Wait for output FIFO to have data, then read one sample
+        fork
+          begin
+            wait (drv_vif.out_fifo_empty == 0);
+            @(posedge drv_vif.sys_clk);
+            drv_vif.rd_fifo <= 1;
+            @(posedge drv_vif.sys_clk);
+            drv_vif.rd_fifo <= 0;
+          end
+        join
+
+        seq_item_port.item_done();
+      end
+    endtask
+  endclass

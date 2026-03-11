@@ -1,0 +1,62 @@
+`include "uvm_macros.svh"
+import uvm_pkg::*;
+`include "common_types.sv"
+`include "mat_tr.sv"
+
+class systolic_driver extends uvm_driver #(mat_tr);
+    `uvm_component_utils(systolic_driver)
+
+    systolic_vif_t drv_vif;
+
+    function new(string name, uvm_component parent);
+      super.new(name, parent);
+    endfunction
+
+    virtual function void build_phase(uvm_phase phase);
+      super.build_phase(phase);
+      if (!uvm_config_db#(systolic_vif_t)::get(this, "", "vif", drv_vif))
+        `uvm_fatal("NOVIF", "systolic_driver: no vif")
+    endfunction
+
+    virtual task run_phase(uvm_phase phase);
+      mat_tr tr;
+      drv_vif.in_valid <= 0;
+      foreach (drv_vif.a_din[i]) begin
+        drv_vif.a_din[i] <= '0;
+        drv_vif.b_din[i] <= '0;
+        drv_vif.c_din[i] <= '0;
+      end
+
+      forever begin
+        seq_item_port.get_next_item(tr);
+        `uvm_info(get_type_name(),
+                  $sformatf("Driving systolic tr id=%0d N=%0d M=%0d", tr.id, tr.N, tr.M),
+                  UVM_MEDIUM)
+
+        // Stream M cycles of A/B
+        for (int k = 0; k < tr.M; k++) begin
+          @(posedge drv_vif.clk);
+          for (int i = 0; i < tr.N; i++) begin
+            drv_vif.a_din[i] <= tr.A[i][k];
+            drv_vif.b_din[i] <= tr.B[k][i];
+            drv_vif.c_din[i] <= '0; // no loopback in this simple model
+          end
+          drv_vif.in_valid <= 1;
+        end
+
+        // Deassert in_valid
+        @(posedge drv_vif.clk);
+        drv_vif.in_valid <= 0;
+        foreach (drv_vif.a_din[i]) begin
+          drv_vif.a_din[i] <= '0;
+          drv_vif.b_din[i] <= '0;
+        end
+
+        // Wait for out_valid
+        wait (drv_vif.out_valid == 1);
+        @(posedge drv_vif.clk);
+
+        seq_item_port.item_done();
+      end
+    endtask
+  endclass

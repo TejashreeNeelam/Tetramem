@@ -1,0 +1,39 @@
+module sub_sys_sva #(
+  parameter int DIN_WIDTH = 8,
+  parameter int N         = 4,
+  parameter int BUS_WIDTH = 2*DIN_WIDTH*N
+)(
+  input  logic                  sys_clk,
+  input  logic                  sr_clk,
+  input  logic                  rst_n,
+  input  logic [7:0]            M_minus_one,
+  input  logic [BUS_WIDTH-1:0]  din,
+  input  logic                  wr_fifo,
+  input  logic                  rd_fifo,
+  input  logic                  in_fifo_full,
+  input  logic [BUS_WIDTH-1:0]  dout,
+  input  logic                  out_fifo_empty
+);
+
+  property p_no_write_when_full;
+    @(posedge sys_clk) disable iff (!rst_n)
+      in_fifo_full |-> !wr_fifo;
+  endproperty
+  a_no_write_when_full: assert property (p_no_write_when_full)
+    else $error("Write attempted when input FIFO full");
+
+  property p_no_read_when_empty;
+    @(posedge sys_clk) disable iff (!rst_n)
+      out_fifo_empty |-> !rd_fifo;
+  endproperty
+  a_no_read_when_empty: assert property (p_no_read_when_empty)
+    else $error("Read attempted when output FIFO empty");
+
+  property p_M_known_on_write;
+    @(posedge sys_clk) disable iff (!rst_n)
+      wr_fifo |-> !$isunknown(M_minus_one);
+  endproperty
+  a_M_known_on_write: assert property (p_M_known_on_write)
+    else $error("M_minus_one X/Z when wr_fifo=1");
+
+endmodule

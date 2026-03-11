@@ -1,0 +1,35 @@
+module systolic_sva #(
+  parameter int DIN_WIDTH = 8,
+  parameter int N         = 4
+)(
+  input  logic                         clk,
+  input  logic                         rst_n,
+  input  logic                         in_valid,
+  input  logic [DIN_WIDTH-1:0]         a_din   [0:N-1],
+  input  logic [DIN_WIDTH-1:0]         b_din   [0:N-1],
+  input  logic [2*DIN_WIDTH-1:0]       c_dout  [0:N-1],
+  input  logic                         out_valid
+);
+
+  property p_out_valid_known;
+    @(posedge clk) disable iff (!rst_n)
+      !$isunknown(out_valid);
+  endproperty
+  a_out_valid_known: assert property (p_out_valid_known)
+    else $error("out_valid is X/Z");
+
+  property p_c_dout_stable_when_not_valid;
+    @(posedge clk) disable iff (!rst_n)
+      !out_valid |-> $stable(c_dout);
+  endproperty
+  a_c_dout_stable_when_not_valid: assert property (p_c_dout_stable_when_not_valid)
+    else $error("c_dout changed while out_valid=0");
+
+  property p_inputs_known_when_in_valid;
+    @(posedge clk) disable iff (!rst_n)
+      in_valid |-> (!$isunknown(a_din) && !$isunknown(b_din));
+  endproperty
+  a_inputs_known_when_in_valid: assert property (p_inputs_known_when_in_valid)
+    else $error("a_din/b_din X/Z while in_valid=1");
+
+endmodule

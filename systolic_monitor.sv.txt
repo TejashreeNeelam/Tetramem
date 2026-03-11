@@ -1,0 +1,61 @@
+`include "uvm_macros.svh"
+import uvm_pkg::*;
+`include "common_types.sv"
+`include "mat_tr.sv"
+
+class systolic_monitor extends uvm_component;
+    `uvm_component_utils(systolic_monitor)
+
+    systolic_vif_t mon_vif;
+    uvm_analysis_port #(mat_tr) ap;
+
+    function new(string name, uvm_component parent);
+      super.new(name, parent);
+      ap = new("ap", this);
+    endfunction
+
+    virtual function void build_phase(uvm_phase phase);
+      super.build_phase(phase);
+      if (!uvm_config_db#(systolic_vif_t)::get(this, "", "vif", mon_vif))
+        `uvm_fatal("NOVIF", "systolic_monitor: no vif")
+    endfunction
+
+    covergroup cg_sys @(posedge mon_vif.clk);
+    option.per_instance = 1;
+
+    cp_out_valid : coverpoint mon_vif.out_valid {
+      bins low  = {0};
+      bins high = {1};
+    }
+
+    cp_out_valid_pulse : coverpoint mon_vif.out_valid iff (rst_n) {
+      bins single_pulse = (0 => 1 => 0);
+    }
+
+  endgroup
+
+  function new(string name, uvm_component parent);
+    super.new(name, parent);
+    ap = new("ap", this);
+    cg_sys = new();
+  endfunction
+
+    virtual task run_phase(uvm_phase phase);
+      mat_tr tr;
+      forever begin
+        @(posedge mon_vif.clk);
+         cg_sys.sample();
+        if (mon_vif.out_valid) begin
+          tr = mat_tr::type_id::create("sys_mon_tr");
+          tr.N = N_P;
+          tr.M = 0;
+          tr.C = new[tr.N];
+          for (int i = 0; i < tr.N; i++) begin
+            tr.C[i] = new[tr.N];
+            tr.C[i][0] = mon_vif.c_dout[i];
+          end
+          ap.write(tr);
+        end
+      end
+    endtask
+  endclass

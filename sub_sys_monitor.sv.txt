@@ -1,0 +1,63 @@
+`include "uvm_macros.svh"
+import uvm_pkg::*;
+`include "common_types.sv"
+`include "mat_tr.sv"
+
+class sub_sys_monitor extends uvm_component;
+    `uvm_component_utils(sub_sys_monitor)
+
+    sub_sys_vif_t mon_vif;
+    uvm_analysis_port #(mat_tr) ap;
+
+    function new(string name, uvm_component parent);
+      super.new(name, parent);
+      ap = new("ap", this);
+    endfunction
+
+    virtual function void build_phase(uvm_phase phase);
+      super.build_phase(phase);
+      if (!uvm_config_db#(sub_sys_vif_t)::get(this, "", "vif", mon_vif))
+        `uvm_fatal("NOVIF", "sub_sys_monitor: no vif")
+    endfunction
+
+    covergroup cg_sub @(posedge mon_vif.sys_clk);
+    option.per_instance = 1;
+
+    cp_out_empty : coverpoint mon_vif.out_fifo_empty {
+      bins empty = {1};
+      bins not_empty = {0};
+    }
+
+    cp_dout_activity : coverpoint mon_vif.dout {
+      bins zero = {0};
+      bins non_zero = default;
+    }
+
+    cp_empty_to_data : cross cp_out_empty, cp_dout_activity;
+  endgroup
+
+  function new(string name, uvm_component parent);
+    super.new(name, parent);
+    ap = new("ap", this);
+    cg_sub = new();
+  endfunction
+
+    virtual task run_phase(uvm_phase phase);
+      mat_tr tr;
+      forever begin
+        @(posedge mon_vif.sys_clk);
+        cg_sub.sample();
+        if (!mon_vif.out_fifo_empty) begin
+          tr = mat_tr::type_id::create("sub_mon_tr");
+          tr.N = N_P;
+          tr.M = 0;
+          tr.C = new[tr.N];
+          for (int i = 0; i < tr.N; i++) begin
+            tr.C[i] = new[tr.N];
+            tr.C[i][0] = mon_vif.dout[i*2*DIN_WIDTH_P +: 2*DIN_WIDTH_P];
+          end
+          ap.write(tr);
+        end
+      end
+    endtask
+  endclass

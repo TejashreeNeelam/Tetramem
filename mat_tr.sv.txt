@@ -1,0 +1,83 @@
+`include "uvm_macros.svh"
+import uvm_pkg::*;
+`include "common_types.sv"
+
+class mat_tr extends uvm_sequence_item;
+    rand int unsigned M; // inner dimension
+    rand int unsigned N; // outer dimension (match N_P)
+
+    // A: N x M, B: M x N
+    rand din_t A[][$];   // A[N][M]
+    rand din_t B[][$];   // B[M][N]
+           acc_t C[][$]; // C[N][N] expected
+
+    rand int unsigned id;
+
+    constraint c_sizes {
+      N == N_P;
+      M inside {[1:8]}; 
+    }
+
+    constraint c_dims {
+      A.size() == N;
+      foreach (A[i]) A[i].size() == M;
+      B.size() == M;
+      foreach (B[k]) B[k].size() == N;
+    }
+
+    constraint c_vals {
+      foreach (A[i,j]) A[i][j] inside {[-8:8]};
+      foreach (B[i,j]) B[i][j] inside {[-8:8]};
+    }
+
+    function new(string name="mat_tr");
+      super.new(name);
+    endfunction
+
+    // Golden reference computation of C = A x B
+    function void build_expected();
+      C = new[N];
+      for (int i = 0; i < N; i++) begin
+        C[i] = new[N];
+        for (int j = 0; j < N; j++) begin
+          acc_t sum = '0;
+          for (int k = 0; k < M; k++) begin
+            sum += acc_t'(A[i][k]) * acc_t'(B[k][j]);
+          end
+          C[i][j] = sum;
+        end
+      end
+    endfunction
+  covergroup cg_mat_tr @(posedge uvm_root::get().m_uvm_report_enabled); // dummy clock
+    option.per_instance = 1;
+
+    cp_M : coverpoint M {
+      bins small  = {[1:2]};
+      bins medium = {[3:4]};
+      bins large  = {[5:8]};
+    }
+
+    cp_A_sign : coverpoint A[0][0] {
+      bins neg = {[-8:-1]};
+      bins zero = {0};
+      bins pos = {[1:8]};
+    }
+
+    cp_B_sign : coverpoint B[0][0] {
+      bins neg = {[-8:-1]};
+      bins zero = {0};
+      bins pos = {[1:8]};
+    }
+
+    cp_sign_cross : cross cp_A_sign, cp_B_sign;
+  endgroup
+
+    function void post_randomize();
+      if (cg_mat_tr == null)
+      cg_mat_tr = new();
+    cg_mat_tr.sample();
+      build_expected();
+    endfunction
+
+    `uvm_object_utils(mat_tr)
+  endclass

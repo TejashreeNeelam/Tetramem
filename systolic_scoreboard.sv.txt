@@ -1,0 +1,99 @@
+`include "uvm_macros.svh"
+import uvm_pkg::*;
+`include "common_types.sv"
+`include "mat_tr.sv"
+
+class systolic_scoreboard extends uvm_component;
+  `uvm_component_utils(systolic_scoreboard)
+
+  uvm_analysis_export #(mat_tr) exp_systolic;
+  uvm_analysis_export #(mat_tr) exp_subsys;
+
+  mat_tr expected_q[$];
+  mat_tr systolic_obs_q[$];
+  mat_tr subsys_obs_q[$];
+
+  function new(string name, uvm_component parent);
+    super.new(name, parent);
+    exp_systolic = new("exp_systolic", this);
+    exp_subsys   = new("exp_subsys", this);
+  endfunction
+
+  virtual function void write_systolic(mat_tr tr);
+    systolic_obs_q.push_back(tr);
+    compare_if_ready();
+  endfunction
+
+  virtual function void write_subsys(mat_tr tr);
+    subsys_obs_q.push_back(tr);
+    compare_if_ready();
+  endfunction
+
+  function void register_expected(mat_tr tr);
+    expected_q.push_back(tr);
+  endfunction
+
+  function void compare_if_ready();
+    if (expected_q.size() == 0)
+      return;
+
+    if (systolic_obs_q.size() > 0) begin
+      mat_tr exp = expected_q.pop_front();
+      mat_tr obs = systolic_obs_q.pop_front();
+      compare_matrix("SYSTOLIC", exp, obs);
+    end
+
+    if (subsys_obs_q.size() > 0) begin
+      mat_tr exp = expected_q.pop_front();
+      mat_tr obs = subsys_obs_q.pop_front();
+      compare_matrix("SUB_SYS", exp, obs);
+    end
+  endfunction
+
+  function void compare_matrix(string tag, mat_tr exp, mat_tr obs);
+    int errors = 0;
+
+    for (int i = 0; i < exp.N; i++) begin
+      for (int j = 0; j < exp.N; j++) begin
+        if (obs.C[i].size() <= j) begin
+          `uvm_error(tag,
+            $sformatf("Observed C[%0d][%0d] missing (obs size=%0d)",
+                      i, j, obs.C[i].size()))
+          errors++;
+          continue;
+        end
+
+        if (obs.C[i][j] !== exp.C[i][j]) begin
+          `uvm_error(tag,
+            $sformatf("Mismatch C[%0d][%0d]: expected=%0d observed=%0d",
+                      i, j, exp.C[i][j], obs.C[i][j]))
+          errors++;
+        end
+      end
+    end
+
+    if (errors == 0) begin
+      `uvm_info(tag,
+        $sformatf("PASS: Matrix multiplication correct for tr id=%0d", exp.id),
+        UVM_LOW)
+    end else begin
+      `uvm_error(tag,
+        $sformatf("FAIL: %0d mismatches for tr id=%0d", errors, exp.id))
+      print_matrix("EXPECTED", exp.C);
+      print_matrix("OBSERVED", obs.C);
+    end
+  endfunction
+
+  function void print_matrix(string name, acc_t C[][]);
+    string row;
+    `uvm_info("MATRIX", $sformatf("%s:", name), UVM_LOW)
+    for (int i = 0; i < C.size(); i++) begin
+      row = "";
+      for (int j = 0; j < C[i].size(); j++) begin
+        row = {row, $sformatf("%0d ", C[i][j])};
+      end
+      `uvm_info("MATRIX", row, UVM_LOW)
+    end
+  endfunction
+
+endclass
